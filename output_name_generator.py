@@ -9,13 +9,13 @@ from config import PREFIX_MAP
 
 def generate_output_name(directory_title: str) -> str:
     """
-    根据目录标题生成Output Name
+    根据目录标题生成 Output Name
     规则：
     - 表→t，图→f，列表→l
-    - 按.分割编号部分
-    - 纯数字部分补零到2位（1→01，14→14）
-    - 单独字母前补0（a→0a）
-    - 数字+字母组合保持原样（1a→1a，14a→14a）
+    - 按。分割编号部分
+    - 纯数字部分补零到 2 位（1→01，14→14）
+    - 包含数字和字母的组合：数字部分补零，字母部分保持原样（1a→01a，14a→14a）
+    - 纯字母部分保持原样（a→a，ab→ab）
     """
     # 提取前缀和编号部分
     # 修改正则以正确提取编号部分（不包含后续文本）
@@ -44,19 +44,32 @@ def generate_output_name(directory_title: str) -> str:
         part = part.strip()
         if not part:
             continue
+                
+        # Check if part contains any digits
+        has_digit = any(char.isdigit() for char in part)
+        # Check if part contains any alphabetic character
+        has_alpha = any(char.isalpha() for char in part)
             
-        # 处理纯数字部分
-        if part.isdigit():
-            processed_parts.append(part.zfill(2))
-        # 处理字母部分
-        elif part.isalpha() and len(part) == 1:
-            processed_parts.append("0" + part)
-        # 处理数字+字母组合 - 保持原样
-        elif len(part) > 1 and part[:-1].isdigit() and part[-1].isalpha():
-            # 直接保持原样，不进行任何处理
+        if has_digit:
+            # Extract leading digits and trailing letters
+            digit_end_index = 0
+            for j, char in enumerate(part):
+                if char.isdigit():
+                    digit_end_index = j + 1
+                else:
+                    break
+                
+            # Pad the digit portion to 2 digits
+            digit_part = part[:digit_end_index].zfill(2)
+            # Keep the letter portion as-is
+            alpha_part = part[digit_end_index:]
+                
+            processed_parts.append(digit_part + alpha_part)
+        elif has_alpha:
+            # Pure letters - keep as-is
             processed_parts.append(part)
         else:
-            # 其他情况保持原样
+            # Other cases - keep as-is
             processed_parts.append(part)
     
     # 拼接结果
