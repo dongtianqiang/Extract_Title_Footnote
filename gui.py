@@ -62,6 +62,9 @@ class ExtractTitleFootnoteGUI:
         # Cancellation support
         self.cancellation_token: Optional[CancellationToken] = None
         
+        # README window reference
+        self.readme_window = None
+        
         # Create tabbed interface
         self.create_tab_interface()
         
@@ -126,8 +129,24 @@ class ExtractTitleFootnoteGUI:
         # Top navigation bar (tab bar)
         self.tab_bar = tk.Frame(self.main_container, bg=self.bg_color, height=30)
         self.tab_bar.grid(row=0, column=0, sticky=(tk.W, tk.E))
-        self.tab_bar.grid_columnconfigure(0, weight=1)
-        self.tab_bar.grid_columnconfigure(1, weight=1)
+        self.tab_bar.grid_columnconfigure(0, weight=0)  # README button - no expansion
+        self.tab_bar.grid_columnconfigure(1, weight=1)  # Shell Processor tab - expand
+        self.tab_bar.grid_columnconfigure(2, weight=1)  # RTF Processor tab - no expansion
+        
+        # README button (top-left, before Shell Processor tab)
+        self.readme_btn = tk.Button(
+            self.tab_bar,
+            text="ℹ README",
+            font=("Segoe UI", 9, "bold"),
+            command=self.show_readme,
+            bg=self.disabled_color,
+            fg=self.fg_color,
+            relief="flat",
+            pady=4,
+            padx=8,
+            cursor="hand2"
+        )
+        self.readme_btn.grid(row=0, column=0, sticky=tk.W, padx=(5, 10), pady=3)
         
         # Shell Processor tab
         self.shell_tab_btn = tk.Button(
@@ -140,7 +159,7 @@ class ExtractTitleFootnoteGUI:
             relief="flat",
             pady=6
         )
-        self.shell_tab_btn.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=0, pady=0)
+        self.shell_tab_btn.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=0, pady=0)
         
         # RTF Processor tab
         self.rtf_tab_btn = tk.Button(
@@ -153,7 +172,7 @@ class ExtractTitleFootnoteGUI:
             relief="flat",
             pady=6
         )
-        self.rtf_tab_btn.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=0, pady=0)
+        self.rtf_tab_btn.grid(row=0, column=2, sticky=(tk.W, tk.E), padx=0, pady=0)
         
         # Create content frames for each tab
         self.shell_content_frame = tk.Frame(self.main_container, bg=self.bg_color)
@@ -167,6 +186,108 @@ class ExtractTitleFootnoteGUI:
         
         # Show Shell Processor tab by default
         self.show_tab("shell")
+
+    def _get_readme_path(self):
+        """Get README file path - works in both development and packaged modes"""
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # Running in frozen mode - use PyInstaller temp directory
+            return os.path.join(sys._MEIPASS, 'README_V1.0.md')
+        else:
+            # Running in development - use current file directory
+            return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'README_V1.0.md')
+
+    def show_readme(self):
+        """Show README content in a popup window"""
+        # If window already exists, bring it to front
+        if self.readme_window is not None:
+            try:
+                self.readme_window.focus_force()
+                self.readme_window.lift()
+                self.readme_window.attributes('-topmost', True)
+                self.readme_window.attributes('-topmost', False)
+                return
+            except:
+                # Window was closed unexpectedly, reset reference
+                self.readme_window = None
+        
+        # Create new README window
+        readme_win = tk.Toplevel(self.root)
+        self.readme_window = readme_win
+        
+        # Configure window
+        readme_win.title("README - 标题脚注提取工具")
+        readme_win.geometry("700x600")
+        readme_win.configure(bg=self.bg_color)
+        
+        # Set window icon
+        icon_path = self._get_icon_path()
+        if icon_path:
+            try:
+                readme_win.iconbitmap(icon_path)
+            except Exception:
+                pass
+        
+        # Main container
+        main_frame = tk.Frame(readme_win, bg=self.bg_color)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Text area with scrollbar
+        text_widget = scrolledtext.ScrolledText(
+            main_frame,
+            wrap=tk.WORD,
+            font=("Consolas", 9),
+            bg="#2d2d3b",
+            fg=self.fg_color,
+            insertbackground=self.fg_color,
+            relief="flat",
+            borderwidth=0
+        )
+        text_widget.pack(fill=tk.BOTH, expand=True)
+        
+        # Load README content
+        try:
+            readme_path = self._get_readme_path()
+            if os.path.exists(readme_path):
+                with open(readme_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                text_widget.insert(tk.END, content)
+            else:
+                text_widget.insert(tk.END, "README file not found: README_V1.0.md")
+        except Exception as e:
+            text_widget.insert(tk.END, f"Error loading README: {str(e)}")
+        
+        # Make text widget read-only
+        text_widget.config(state='disabled')
+        
+        # Handle window close
+        def on_close():
+            self.readme_window = None
+            readme_win.destroy()
+        
+        readme_win.protocol("WM_DELETE_WINDOW", on_close)
+        
+        # Bring window to front
+        readme_win.after(100, lambda: self._focus_readme_window(readme_win))
+    
+    def _focus_readme_window(self, win):
+        """Helper to focus README window"""
+        try:
+            win.focus_force()
+            win.lift()
+            win.attributes('-topmost', True)
+            win.attributes('-topmost', False)
+        except:
+            pass
+    
+    def close_readme_window(self):
+        """Close the README window"""
+        if self.readme_window:
+            try:
+                self.readme_window.destroy()
+            except:
+                pass
+            finally:
+                self.readme_window = None
     
     def show_tab(self, tab_name):
         """Switch between tabs"""
@@ -476,7 +597,7 @@ class ExtractTitleFootnoteGUI:
                                height=1)
         browse_lot_btn.grid(row=1, column=2, padx=(10, 0), pady=(0, 10), sticky=tk.E)
         
-        lot_hint = tk.Label(input_frame, text="Enter the full path to the LOT file to process", 
+        lot_hint = tk.Label(input_frame, text="Enter the full path to the LOT file to process (RTF files must be in the same folder)", 
                              bg=self.bg_color, 
                              fg="#9e9e9e",
                              font=("Segoe UI", 8))
@@ -1072,6 +1193,13 @@ def main():
     x = (screen_width // 2) - (window_width // 2)
     y = (screen_height // 2) - (window_height // 2)
     root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    
+    # Handle window close to also close README window
+    def on_main_window_close():
+        app.close_readme_window()
+        root.destroy()
+    
+    root.protocol("WM_DELETE_WINDOW", on_main_window_close)
     
     # Show window after all components are ready
     root.deiconify()
