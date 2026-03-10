@@ -1,6 +1,5 @@
 # Extract_Title_Footnote
 Extract titles and footnotes from Shell/RTF files
-
 # 标题脚注提取工具
 
 ## 项目概述
@@ -83,19 +82,6 @@ Extract titles and footnotes from Shell/RTF files
 ### RTF Processor输出
 
 生成 `项目编号_rtf_title_footnote.rtf` 文件。
-
-**处理流程**：
-1. 读取 LOT 文件中的文件名称列表
-2. 在 LOT 文件所在目录创建 `_tf_temp_folder` 临时文件夹
-3. 将 LOT 文件中列出的 RTF 文件复制到临时文件夹
-4. 对每个 RTF 文件进行处理：
-   - 移除从第一个包含`\cell}` 的行之后到最后一个包含`\pard\plain\qc` 的行之间的内容
-   - 移除特定格式的多余行（`	rowd\trkeep\trql`相关）
-5. 将所有处理后的 RTF 文件合并：
-   - 除最后一个文件外，移除每个文件的最后一个"}"字符
-   - 除第一个文件外，只保留包含`{\header\pard`的行及其下方内容
-   - 无缝合并所有内容，不添加额外信息
-6. 删除临时文件夹，清理中间文件
 
 
 ## Shell Processor编码版本替换功能
@@ -187,13 +173,13 @@ Extract titles and footnotes from Shell/RTF files
 - ✅ 关键词不区分大小写
 - ✅ 当段落包含任意一个关键词（默认+自定义）时，脚注提取会在此处终止
 - ✅ 只保留关键词之前的内容作为脚注
-- ✅ GUI界面支持动态添加关键词输入框
 
-**使用场景：**
-- 当文档中除了programming/programmer之外还有其他术语表示脚注结束时
-- 需要根据不同项目添加额外的终止关键词
-- 处理多种语言或专业术语的文档
-- 保留默认关键词的同时扩展终止条件
+
+## 版本信息
+- 版本: 1.0.0
+- 作者: 董天强
+- 时间: 2026年3月
+
 
 
 ## 版本信息
