@@ -7,6 +7,12 @@ import time
 import traceback
 from typing import Callable, Optional
 
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
 # Add the current directory to Python path to import modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -50,6 +56,9 @@ class ExtractTitleFootnoteGUI:
         
         self.root.configure(bg=self.bg_color)
         
+        # Load and set window icon
+        self._load_icon()
+        
         # Cancellation support
         self.cancellation_token: Optional[CancellationToken] = None
         
@@ -60,6 +69,49 @@ class ExtractTitleFootnoteGUI:
         self.processing = False
         self.process_thread = None
         self.monitor_thread = None
+        
+        # RTF processing state
+        self.rtf_processing = False
+        self.rtf_process_thread = None
+        self.rtf_monitor_thread = None
+        self.rtf_cancellation_token: Optional[CancellationToken] = None
+    
+    def _get_icon_path(self):
+        """Get icon file path - search in multiple locations"""
+        # Search for icon files in priority order
+        icon_filenames = ['favicon32.ico']
+        
+        for icon_name in icon_filenames:
+            # Priority 1: Current directory (development)
+            current_dir = os.path.join(os.getcwd(), icon_name)
+            if os.path.exists(current_dir):
+                return current_dir
+            
+            # Priority 2: Executable directory (packaged)
+            if getattr(sys, 'frozen', False):
+                exe_dir = os.path.join(os.path.dirname(sys.executable), icon_name)
+                if os.path.exists(exe_dir):
+                    return exe_dir
+            
+            # Priority 3: PyInstaller temp directory (_MEIPASS)
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                pyinstaller_dir = os.path.join(sys._MEIPASS, icon_name)
+                if os.path.exists(pyinstaller_dir):
+                    return pyinstaller_dir
+        
+        return None
+    
+    def _load_icon(self):
+        """Load and apply window icons using optimized method"""
+        icon_path = self._get_icon_path()
+        if icon_path:
+            try:
+                # Set default icon for taskbar and Alt+Tab
+                self.root.iconbitmap(default=icon_path)
+                # Set window icon for title bar
+                self.root.iconbitmap(icon_path)
+            except Exception as e:
+                print(f"Warning: Could not set window icon: {e}")
     
     def create_tab_interface(self):
         """Create the tabbed interface with Shell Processor and RTF Processor tabs"""
@@ -134,6 +186,67 @@ class ExtractTitleFootnoteGUI:
             self.rtf_content_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
             self.rtf_tab_btn.config(bg=self.accent_color, fg="white")
     
+    def _create_styled_entry(self, parent, textvariable=None, **kwargs):
+        """Create an entry widget with consistent dark theme styling"""
+        entry = tk.Entry(
+            parent,
+            textvariable=textvariable,
+            font=("Segoe UI", 10),
+            bg="#2d2d3b",
+            fg=self.fg_color,
+            insertbackground=self.fg_color,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#444455",
+            **kwargs
+        )
+        return entry
+    
+    def _create_styled_button(self, parent, text, command, bg=None, fg="white", **kwargs):
+        """Create a button with consistent styling"""
+        if bg is None:
+            bg = self.accent_color
+        btn = tk.Button(
+            parent,
+            text=text,
+            command=command,
+            font=("Segoe UI", 10),
+            relief="flat",
+            height=1,
+            bg=bg,
+            fg=fg,
+            **kwargs
+        )
+        return btn
+    
+    def _add_log_entry(self, text_widget, label, message):
+        """Generic method to add log entry to any text widget"""
+        timestamp = time.strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}\n"
+        
+        text_widget.insert(tk.END, log_entry)
+        text_widget.see(tk.END)
+        
+        # Update logs count
+        lines = int(text_widget.index('end-1c').split('.')[0])
+        label.config(text=f"Logs ({lines} entries)")
+    
+    def _copy_logs_to_clipboard(self, text_widget, log_func):
+        """Generic method to copy logs to clipboard"""
+        try:
+            # If there's a selection, copy that
+            if text_widget.tag_ranges("sel"):
+                selected_text = text_widget.get("sel.first", "sel.last")
+            else:
+                # Copy all logs
+                selected_text = text_widget.get(1.0, tk.END).rstrip()
+            
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected_text)
+            log_func("Logs copied to clipboard")
+        except Exception as e:
+            log_func(f"Error copying logs: {str(e)}")
+    
     def build_shell_processor_tab(self):
         
         # Main frame for Shell Processor
@@ -164,14 +277,7 @@ class ExtractTitleFootnoteGUI:
         docx_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
         
         self.docx_path_var = tk.StringVar()
-        self.docx_entry = tk.Entry(input_frame, textvariable=self.docx_path_var, 
-                                   font=("Segoe UI", 10),
-                                   bg="#2d2d3b",
-                                   fg=self.fg_color,
-                                   insertbackground=self.fg_color,
-                                   relief="flat",
-                                   highlightthickness=1,
-                                   highlightbackground="#444455")
+        self.docx_entry = self._create_styled_entry(input_frame, textvariable=self.docx_path_var)
         self.docx_entry.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         
         browse_btn = tk.Button(input_frame, text="Browse...", 
@@ -197,14 +303,7 @@ class ExtractTitleFootnoteGUI:
         columns_label.grid(row=3, column=0, sticky=tk.W, pady=(0, 5))
         
         self.max_columns_var = tk.StringVar(value="7")
-        self.columns_entry = tk.Entry(input_frame, textvariable=self.max_columns_var, 
-                                      font=("Segoe UI", 10),
-                                      bg="#2d2d3b",
-                                      fg=self.fg_color,
-                                      insertbackground=self.fg_color,
-                                      relief="flat",
-                                      highlightthickness=1,
-                                      highlightbackground="#444455")
+        self.columns_entry = self._create_styled_entry(input_frame, textvariable=self.max_columns_var)
         self.columns_entry.grid(row=4, column=0, sticky=(tk.W, tk.E), padx=(0, 10), pady=(0, 10))
         
         columns_hint = tk.Label(input_frame, text="Range: 1 - 10, default: 7", 
@@ -221,14 +320,7 @@ class ExtractTitleFootnoteGUI:
         project_label.grid(row=3, column=1, sticky=tk.W, pady=(0, 5))
         
         self.project_id_var = tk.StringVar()
-        self.project_id_entry = tk.Entry(input_frame, textvariable=self.project_id_var, 
-                                         font=("Segoe UI", 10),
-                                         bg="#2d2d3b",
-                                         fg=self.fg_color,
-                                         insertbackground=self.fg_color,
-                                         relief="flat",
-                                         highlightthickness=1,
-                                         highlightbackground="#444455")
+        self.project_id_entry = self._create_styled_entry(input_frame, textvariable=self.project_id_var)
         self.project_id_entry.grid(row=4, column=1, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         
         project_hint = tk.Label(input_frame, text="Used as the output filename prefix", 
@@ -347,84 +439,6 @@ class ExtractTitleFootnoteGUI:
         # Add copy functionality to logs
         self.logs_text.bind("<Control-c>", self.copy_logs)
         
-        # Status variables
-        self.processing = False
-        self.process_thread = None
-        self.monitor_thread = None
-        
-    def create_tab_interface(self):
-        """Create the tabbed interface with Shell Processor and RTF Processor tabs"""
-        # Main container for tabs
-        self.main_container = tk.Frame(self.root, bg=self.bg_color)
-        self.main_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_rowconfigure(0, weight=1)
-        self.main_container.grid_columnconfigure(0, weight=1)
-        self.main_container.grid_rowconfigure(1, weight=1)
-        
-        # Top navigation bar (tab bar)
-        self.tab_bar = tk.Frame(self.main_container, bg=self.bg_color, height=30)
-        self.tab_bar.grid(row=0, column=0, sticky=(tk.W, tk.E))
-        self.tab_bar.grid_columnconfigure(0, weight=1)
-        self.tab_bar.grid_columnconfigure(1, weight=1)
-        
-        # Shell Processor tab
-        self.shell_tab_btn = tk.Button(
-            self.tab_bar, 
-            text="Shell Processor",
-            font=("Segoe UI", 10, "bold"),
-            command=lambda: self.show_tab("shell"),
-            bg=self.accent_color,
-            fg="white",
-            relief="flat",
-            pady=6
-        )
-        self.shell_tab_btn.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=0, pady=0)
-        
-        # RTF Processor tab
-        self.rtf_tab_btn = tk.Button(
-            self.tab_bar,
-            text="RTF Processor",
-            font=("Segoe UI", 10, "bold"),
-            command=lambda: self.show_tab("rtf"),
-            bg=self.disabled_color,
-            fg=self.fg_color,
-            relief="flat",
-            pady=6
-        )
-        self.rtf_tab_btn.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=0, pady=0)
-        
-        # Create content frames for each tab
-        self.shell_content_frame = tk.Frame(self.main_container, bg=self.bg_color)
-        self.rtf_content_frame = tk.Frame(self.main_container, bg=self.bg_color)
-        
-        # Build Shell Processor tab content
-        self.build_shell_processor_tab()
-        
-        # Build RTF Processor tab content
-        self.build_rtf_processor_tab()
-        
-        # Show Shell Processor tab by default
-        self.show_tab("shell")
-    
-    def show_tab(self, tab_name):
-        """Switch between tabs"""
-        # Hide all content frames
-        self.shell_content_frame.grid_forget()
-        self.rtf_content_frame.grid_forget()
-        
-        # Reset tab button styles
-        self.shell_tab_btn.config(bg=self.disabled_color, fg=self.fg_color)
-        self.rtf_tab_btn.config(bg=self.disabled_color, fg=self.fg_color)
-        
-        # Show selected tab and highlight button
-        if tab_name == "shell":
-            self.shell_content_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-            self.shell_tab_btn.config(bg=self.accent_color, fg="white")
-        elif tab_name == "rtf":
-            self.rtf_content_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-            self.rtf_tab_btn.config(bg=self.accent_color, fg="white")
-    
     def build_rtf_processor_tab(self):
         """Build the RTF Processor tab content"""
         # Main frame for RTF Processor
@@ -450,14 +464,7 @@ class ExtractTitleFootnoteGUI:
         lot_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
         
         self.lot_path_var = tk.StringVar()
-        self.lot_entry = tk.Entry(input_frame, textvariable=self.lot_path_var, 
-                                   font=("Segoe UI", 10),
-                                   bg="#2d2d3b",
-                                   fg=self.fg_color,
-                                   insertbackground=self.fg_color,
-                                   relief="flat",
-                                   highlightthickness=1,
-                                   highlightbackground="#444455")
+        self.lot_entry = self._create_styled_entry(input_frame, textvariable=self.lot_path_var)
         self.lot_entry.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         
         browse_lot_btn = tk.Button(input_frame, text="Browse...", 
@@ -483,14 +490,7 @@ class ExtractTitleFootnoteGUI:
         project_label.grid(row=3, column=0, sticky=tk.W, pady=(0, 5))
         
         self.rtf_project_id_var = tk.StringVar()
-        self.rtf_project_id_entry = tk.Entry(input_frame, textvariable=self.rtf_project_id_var, 
-                                         font=("Segoe UI", 10),
-                                         bg="#2d2d3b",
-                                         fg=self.fg_color,
-                                         insertbackground=self.fg_color,
-                                         relief="flat",
-                                         highlightthickness=1,
-                                         highlightbackground="#444455")
+        self.rtf_project_id_entry = self._create_styled_entry(input_frame, textvariable=self.rtf_project_id_var)
         self.rtf_project_id_entry.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
         
         project_hint = tk.Label(input_frame, text="Used as the output filename prefix", 
@@ -554,10 +554,7 @@ class ExtractTitleFootnoteGUI:
         self.rtf_logs_text.configure(height=15)
         self.rtf_logs_text.bind("<Control-c>", self.copy_rtf_logs)
         
-        # RTF processing state
-        self.rtf_processing = False
-        self.rtf_process_thread = None
-        self.rtf_cancellation_token: Optional[CancellationToken] = None
+        # RTF processing state is initialized in __init__
     
     def add_keyword_entry(self):
         """Add a new keyword entry field"""
@@ -568,14 +565,7 @@ class ExtractTitleFootnoteGUI:
         self.keyword_vars.append(keyword_var)
         
         # Entry widget (adaptive width like Shell File Path)
-        keyword_entry = tk.Entry(self.keywords_container, textvariable=keyword_var,
-                                font=("Segoe UI", 10),
-                                bg="#2d2d3b",
-                                fg=self.fg_color,
-                                insertbackground=self.fg_color,
-                                relief="flat",
-                                highlightthickness=1,
-                                highlightbackground="#444455")
+        keyword_entry = self._create_styled_entry(self.keywords_container, textvariable=keyword_var)
         keyword_entry.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
         self.keyword_entries.append(keyword_entry)
         
@@ -691,7 +681,7 @@ class ExtractTitleFootnoteGUI:
         custom_keywords = self.get_custom_keywords()
         
         # Check if all required fields are filled
-        if docx_path and max_columns and project_id:
+        if docx_path and max_columns and project_id and not self.processing and not self.rtf_processing:
             # Check if max_columns is a valid number between 1-10
             try:
                 columns_val = int(max_columns)
@@ -850,37 +840,12 @@ class ExtractTitleFootnoteGUI:
     
     def add_log(self, message):
         """Add a log message to the logs text area"""
-        timestamp = time.strftime("%H:%M:%S")
-        log_entry = f"[{timestamp}] {message}\n"
-        
         # Update the text widget from the main thread
-        self.root.after(0, self._add_log_to_text, log_entry)
-    
-    def _add_log_to_text(self, log_entry):
-        """Helper method to add log entry to text widget (called from main thread)"""
-        self.logs_text.insert(tk.END, log_entry)
-        self.logs_text.see(tk.END)
-        
-        # Update logs count in label
-        lines = int(self.logs_text.index('end-1c').split('.')[0])
-        self.logs_label.config(text=f"Logs ({lines} entries)")
+        self.root.after(0, lambda: self._add_log_entry(self.logs_text, self.logs_label, message))
     
     def copy_logs(self, event=None):
         """Copy selected text or all logs to clipboard"""
-        try:
-            # If there's a selection, copy that
-            if self.logs_text.tag_ranges("sel"):
-                selected_text = self.logs_text.get("sel.first", "sel.last")
-                self.root.clipboard_clear()
-                self.root.clipboard_append(selected_text)
-            else:
-                # Copy all logs
-                all_text = self.logs_text.get(1.0, tk.END).rstrip()
-                self.root.clipboard_clear()
-                self.root.clipboard.append(all_text)
-            self.add_log("Logs copied to clipboard")
-        except Exception as e:
-            self.add_log(f"Error copying logs: {str(e)}")
+        self._copy_logs_to_clipboard(self.logs_text, self.add_log)
     
     def update_rtf_confirm_button_state(self, *args):
         """Update the state of the RTF confirm button based on input validity"""
@@ -892,7 +857,7 @@ class ExtractTitleFootnoteGUI:
         project_id = self.rtf_project_id_var.get().strip()
         
         # Check if all required fields are filled
-        if lot_path and project_id:
+        if lot_path and project_id and not self.processing and not self.rtf_processing:
             self.rtf_confirm_btn.config(bg=self.accent_color, fg="white")
             self.rtf_confirm_btn.config(state="normal")
             return
@@ -900,17 +865,20 @@ class ExtractTitleFootnoteGUI:
         # Disable confirm button if any field is invalid
         self.rtf_confirm_btn.config(bg=self.disabled_color, fg=self.fg_color)
         self.rtf_confirm_btn.config(state="disabled")
-    
+
     def update_all_processor_buttons(self):
         """Update button states for both processors based on processing status and input validity"""
         # Update Shell Processor buttons
-        if self.processing:
+        if self.processing or self.rtf_processing:
             # Shell processor is running - disable its confirm button
             if hasattr(self, 'confirm_btn') and self.confirm_btn:
                 self.confirm_btn.config(state="disabled", bg=self.disabled_color, fg="#666666", cursor="arrow")
+            if hasattr(self, 'rtf_confirm_btn') and self.rtf_confirm_btn:
+                    self.rtf_confirm_btn.config(state="disabled", bg=self.disabled_color, fg="#666666", cursor="arrow")
         else:
             # Shell processor is not running - update based on input validation
             self.update_confirm_button_state()
+            self.update_rtf_confirm_button_state()
         
         # Update RTF Processor buttons
         if self.rtf_processing:
@@ -1065,37 +1033,12 @@ class ExtractTitleFootnoteGUI:
     
     def add_rtf_log(self, message):
         """Add a log message to the RTF logs text area"""
-        timestamp = time.strftime("%H:%M:%S")
-        log_entry = f"[{timestamp}] {message}\n"
-        
         # Update the text widget from the main thread
-        self.root.after(0, self._add_rtf_log_to_text, log_entry)
-    
-    def _add_rtf_log_to_text(self, log_entry):
-        """Helper method to add RTF log entry to text widget (called from main thread)"""
-        self.rtf_logs_text.insert(tk.END, log_entry)
-        self.rtf_logs_text.see(tk.END)
-        
-        # Update logs count in label
-        lines = int(self.rtf_logs_text.index('end-1c').split('.')[0])
-        self.rtf_logs_label.config(text=f"Logs ({lines} entries)")
+        self.root.after(0, lambda: self._add_log_entry(self.rtf_logs_text, self.rtf_logs_label, message))
     
     def copy_rtf_logs(self, event=None):
         """Copy selected text or all RTF logs to clipboard"""
-        try:
-            # If there's a selection, copy that
-            if self.rtf_logs_text.tag_ranges("sel"):
-                selected_text = self.rtf_logs_text.get("sel.first", "sel.last")
-                self.root.clipboard_clear()
-                self.root.clipboard_append(selected_text)
-            else:
-                # Copy all logs
-                all_text = self.rtf_logs_text.get(1.0, tk.END).rstrip()
-                self.root.clipboard_clear()
-                self.root.clipboard.append(all_text)
-            self.add_rtf_log("Logs copied to clipboard")
-        except Exception as e:
-            self.add_rtf_log(f"Error copying logs: {str(e)}")
+        self._copy_logs_to_clipboard(self.rtf_logs_text, self.add_rtf_log)
     
     class LogRedirector:
         """Redirector class to capture print statements"""
@@ -1112,9 +1055,13 @@ class ExtractTitleFootnoteGUI:
 def main():
     root = tk.Tk()
     
+    # Hide window during initialization to prevent blank flash
+    root.withdraw()
+    
     # Set dark theme
     root.tk_setPalette(background='#1e1e2e', foreground='#d4d4d4')
     
+    # Create app instance (icon is loaded in ExtractTitleFootnoteGUI.__init__)
     app = ExtractTitleFootnoteGUI(root)
     
     # Center the window
@@ -1125,6 +1072,9 @@ def main():
     x = (screen_width // 2) - (window_width // 2)
     y = (screen_height // 2) - (window_height // 2)
     root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    
+    # Show window after all components are ready
+    root.deiconify()
     
     root.mainloop()
 
