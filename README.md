@@ -1,11 +1,12 @@
 # Extract_Title_Footnote
 Extract titles and footnotes from Shell/RTF files
+
 # 标题脚注提取工具
 
 ## 项目概述
 这是一个用于从Shell/RTF文档中提取标题和脚注的工具。
 
-### 🌟 主要特性
+## 主要功能
 - ✅ 自动提取表、图、列表标题（不含副标题）
 - ✅ 自动提取表、图、列表标题的脚注内容
 - ✅ 支持多行标题和脚注的自动拆分
@@ -20,32 +21,32 @@ Extract titles and footnotes from Shell/RTF files
 ## 使用方法
 
 ### Shell Processor
-1. 双击 ExtractTitleFootnote.exe
-2. 切换到"Shell Processor"标签页
-3. 填写必填字段：
-   - **Shell File Path**: 输入 Shell 文件（注意：必须**Clean**版）的完整路径，或点击"Browse..."按钮选择文件
+1. 切换到"Shell Processor"标签页
+2. 填写必填字段：
+   - **Shell File Path**: 输入Shell文件的完整路径，或点击"Browse..."按钮选择文件
+                          必须**Clean**版
    - **Max Footnote Columns**: 设置脚注最大列数（默认值：7，范围：1-10）
    - **Project ID**: 输入项目编号，用于输出文件名前缀
-4. （可选）自定义脚注关键词：
+3. （可选）自定义脚注关键词：
    - 在"Custom Footnote Keywords"区域可以添加一个或多个关键词
-   - 这些关键词将作为脚注提取的终止条件（类似 programming/programmer 的作用）
+   - 这些关键词将作为Programming note的开始条件（类似 programming/programmer 的作用）
    - 点击"+ Add Keyword"按钮可以新增关键词输入框
    - 关键词不区分大小写
-5. 点击"Confirm"按钮开始处理（当所有必填字段都有效时按钮才启用）
-6. 在日志窗口中查看处理进度
-7. 如需停止处理，可随时点击"Cancel"按钮
-8. 可使用 Ctrl+C 复制日志内容
-
-### RTF Processor
-1. 双击 ExtractTitleFootnote.exe
-2. 切换到"RTF Processor"标签页
-3. 填写必填字段：
-   - **LOT File Path**: 输入 LOT 文件（.xlsx 格式）的完整路径，或点击"Browse..."按钮选择文件；**RTF文件应位于同一文件夹内**
-   - **Project ID**: 输入项目编号，用于输出文件名前缀
 4. 点击"Confirm"按钮开始处理（当所有必填字段都有效时按钮才启用）
 5. 在日志窗口中查看处理进度
 6. 如需停止处理，可随时点击"Cancel"按钮
 7. 可使用 Ctrl+C 复制日志内容
+
+### RTF Processor
+1. 切换到"RTF Processor"标签页
+2. 填写必填字段：
+   - **LOT File Path**: 输入 LOT 文件的完整路径，或点击"Browse..."按钮选择文件
+                        xlsx 格式，必须包含字段**文件名称**;**RTF文件应位于同一文件夹内**
+   - **Project ID**: 输入项目编号，用于输出文件名前缀
+3. 点击"Confirm"按钮开始处理（当所有必填字段都有效时按钮才启用）
+4. 在日志窗口中查看处理进度
+5. 如需停止处理，可随时点击"Cancel"按钮
+6. 可使用 Ctrl+C 复制日志内容
 
 ### ⚠️ 注意事项
 - **互斥执行**: 当任一处理器正在运行时，另一个处理器的 Confirm 按钮将自动禁用，防止同时运行
@@ -67,7 +68,7 @@ Extract titles and footnotes from Shell/RTF files
 - **Type**: TLF-Table/TLF-Figure/TLF-Listing，根据标题
 - **TLF**: TXX/FXX/LXX，根据标题
 - **Prgm Name**: 等于Output Name
-- **Output Name**: 以.为分割，如果不足2位自动补0
+- **Output Name**: 以.为分割，如果不足2位自动补0，字母直接保留，不纳入长度判定
 - **title1, title2, ...**: 拆分后的标题行
 - **footnote1, footnote2, ...**: 拆分后的脚注行（受最大列数限制）
 
